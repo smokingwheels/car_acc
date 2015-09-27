@@ -1,0 +1,517 @@
+REM 30/5/2005
+CLEAR , , 1000
+CLS
+DEFDBL A-Z
+LOCATE 2, 1
+COLOR 15
+
+TIMER ON
+ON TIMER(2) GOSUB health
+
+OPEN "c:\qb\dtest.csv" FOR OUTPUT AS #3
+WRITE #3, "RPM", "mecadv*300", "trate", "Ticks"
+
+OUT &H378, 255
+DIM mecadv(5011) AS DOUBLE
+DIM vaclow(5011)
+DIM vachigh(5011)
+DIM nos(5011)
+DIM x1(150)
+DIM x2(150)
+GOSUB loaddata
+SOUND 1000, 5
+SOUND 1900, 5
+SOUND 1200, 5
+start:
+OUT (&H378), 0
+OUT (&H379), 0
+g = 0: t# = 0: d = 0: w = 400: y = 500: adjust# = 0
+maxadv# = 45: timinglight# = 8: revlimit# = 4000: adjustlow# = 1
+uprate# = 20: downrate# = 0: revstop# = 6000: revstall# = 50
+rpm& = 0: timecyc# = .000001
+
+starting:
+t# = 0
+trigger:
+OUT (&H378), 0
+DO
+p% = INP(&H379)
+t# = t# + 2.161
+LOOP UNTIL p% = 56
+DO
+p% = INP(&H379)
+t# = t# + 2.161
+LOOP UNTIL p% = 120
+t# = t# + 60
+acc& = rpm&
+rpm& = INT((943000 / t#) * 30) - 1
+'IF rpm& < revstall# THEN GOTO starting
+'IF rpm& > revstop# THEN GOTO revcutout
+'IF rpm& > revlimit# THEN GOTO trigger
+'IF rpm& > acc& + 20 THEN rpm& = acc& + 20
+'IF rpm& < acc& - 20 THEN rpm& = acc& - 20
+rev& = rpm& / 2
+tickdeg# = t# / 180
+hz# = rpm& / 30
+lasttime# = timecyc#
+timecyc# = 1 / hz#
+timediff# = lasttime# - timecyc#
+timedeg# = timecyc# / 180
+trate# = (timediff# / timedeg#) * 1
+IF trate# < 0 THEN trate# = 0
+IF trate# > 20 THEN trate# = 20
+t# = 0
+s = INT((tickdeg# * (maxadv# - (mecadv(rev&) + vac# + temp# + trate#))) - 50)
+IF s < 1 THEN s = 1
+d = 0
+DO
+d = d + 1
+LOOP UNTIL d = s
+OUT (&H378), 255
+OUT (&H379), 0
+d = 0
+DO
+d = d + 1
+LOOP UNTIL d = w
+d = 0
+t# = t# + s + w + 50
+port% = INP(&H379)
+OUT (&H378), 0
+OUT (&H379), 255
+t# = t# + 50
+IF port% = 143 THEN
+revlimit# = revnor#
+vac# = vachigh(rev&)
+temp# = 0
+END IF
+IF port% = 207 THEN
+vac# = vachigh(rev&)
+END IF
+IF port% = 159 THEN
+revlimit# = revnor#
+vac# = vaclow(rev&)
+temp# = 0
+END IF
+IF port% = 233 THEN
+vac# = vaclow(rev&)
+END IF
+IF port% = 175 THEN
+revlimit# = revla#
+vac# = 0
+END IF
+IF port% = 239 THEN
+vac# = vachigh(rev&)
+END IF
+IF port% = 191 THEN
+revlimit# = revla#
+vac# = vaclow(rev&)
+END IF
+IF port% = 255 THEN
+vac# = vaclow(rev&)
+END IF
+IF port% = 15 THEN
+temp# = 5
+vac = vachigh(rev&)
+END IF
+IF port% = 79 THEN
+vac# = vachigh(rev&)
+END IF
+IF port% = 31 THEN
+revlimit# = revnor#
+temp# = 5
+vac = vaclow(rev&)
+END IF
+IF port% = 95 THEN
+vac# = vaclow(rev&)
+END IF
+IF port% = 47 THEN
+vac# = vachigh(rev&)
+temp# = 0
+END IF
+IF port% = 111 THEN
+vac = vachigh(rev&)
+temp# = 0
+END IF
+IF port% = 63 THEN
+revlimit# = revla#
+vac# = vaclow(rev&)
+temp# = 0
+END IF
+IF port% = 127 THEN
+vac# = vaclow(rev&)
+temp# = 0
+END IF
+'g = g + 1
+'x1(g) = rpm&
+'x2(g) = trate#
+'IF g = 100 THEN
+'t# = t# + 5000
+'GOSUB logging
+'END IF
+GOTO trigger
+
+revstop:
+rpm& = 0
+DO
+p% = INP(&H379)
+t# = t# + 2.161
+LOOP UNTIL p% = 207
+DO
+p% = INP(&H379)
+t# = t# + 2.161
+LOOP UNTIL p% = 143
+
+GOTO starting
+
+health:
+LOCATE 1, 1
+t# = t# + 100
+a$ = INKEY$
+PRINT " RPM"; : PRINT USING "#####"; rpm&;
+PRINT " Spark"; : PRINT USING "######"; s;
+PRINT " Timing"; : PRINT USING "###.###"; (maxadv# - (mech# + vac# + temp#));
+PRINT " Mecadv"; : PRINT USING "###.##"; mecadv(rev&) + nospin;
+PRINT " Vachigh"; : PRINT USING "###.##"; vachigh(rev&);
+PRINT " Vaclow"; : PRINT USING "###.##"; vaclow(rev&);
+LOCATE 2, 1
+PRINT "                                                                   Z / X"
+LOCATE 3, 1
+PRINT " rev limit "; : PRINT USING "#####"; revlimit;
+PRINT " Fine adjust C / V  Course adjust B / N ";
+LOCATE 7, 1
+PRINT " Low rpm"; : PRINT USING "#####"; lowrpm;
+PRINT " High rpm"; : PRINT USING "#####"; highrpm;
+PRINT " mech adv deg"; : PRINT USING "###.##"; highdeg;
+PRINT " Static deg"; : PRINT USING "###.##"; nospin
+LOCATE 8, 1
+PRINT "     Q / A"; "        W / S "; "         E / D "; "             R / F "
+PRINT rate#, acc&
+LOCATE 14, 5
+PRINT "1 = Set timing  at 8 BTDC "
+LOCATE 15, 5
+PRINT "2 = init data files 0's"
+LOCATE 16, 5
+PRINT "3 = load failsafe from data staments  "
+LOCATE 17, 5
+PRINT "4 = save data to data.bas "
+LOCATE 18, 5
+PRINT "5 = load data from data.bas "
+LOCATE 19, 5
+PRINT "6 = export data to Fdd datax.csv"
+LOCATE 20, 5
+PRINT "7 = import data from Fdd datax.csv"
+LOCATE 21, 5
+PRINT "8 = get timing off bloody engine "
+LOCATE 22, 5
+PRINT "9 = time distribor TDC"
+PRINT rateave#, rateval#
+IF a$ = "1" THEN GOTO calibrate
+IF a$ = "2" THEN GOTO initdata
+REM IF a$ = "3" THEN
+IF a$ = "4" THEN GOTO savedata
+IF a$ = "5" THEN GOTO loaddata
+IF a$ = "6" THEN GOTO exportdata
+IF a$ = "7" THEN GOTO importdata
+IF a$ = "8" THEN GOTO gettiming
+IF a$ = "9" THEN GOTO timedist
+IF a$ = "q" THEN
+lowrpm = lowrpm + 25
+GOSUB slopecalc
+END IF
+IF a$ = "Q" THEN
+lowrpm = lowrpm + 25
+GOSUB slopecalc
+END IF
+IF a$ = "a" THEN
+lowrpm = lowrpm - 25
+GOSUB slopecalc
+END IF
+IF a$ = "A" THEN
+lowrpm = lowrpm - 25
+GOSUB slopecalc
+END IF
+IF a$ = "w" THEN
+highrpm = highrpm + 25
+GOSUB slopecalc
+END IF
+IF a$ = "W" THEN
+highrpm = highrpm + 25
+GOSUB slopecalc
+END IF
+IF a$ = "s" THEN
+highrpm = highrpm - 25
+GOSUB slopecalc
+END IF
+IF a$ = "S" THEN
+highrpm = highrpm - 25
+GOSUB slopecalc
+END IF
+IF a$ = "e" THEN
+highdeg = highdeg + .25
+GOSUB slopecalc
+END IF
+IF a$ = "E" THEN
+highdeg = highdeg + .25
+GOSUB slopecalc
+END IF
+IF a$ = "d" THEN
+highdeg = highdeg - .25
+GOSUB slopecalc
+END IF
+IF a$ = "D" THEN
+highdeg = highdeg - .25
+GOSUB slopecalc
+END IF
+IF a$ = "r" THEN
+nospin = nospin + .25
+REM highdeg = highdeg - .25
+GOSUB slopecalc
+END IF
+IF a$ = "R" THEN
+nospin = nospin + .25
+REM highdeg = highdeg - .25
+GOSUB slopecalc
+END IF
+IF a$ = "f" THEN
+nospin = nospin - .25
+REM highdeg = highdeg + .25
+GOSUB slopecalc
+END IF
+IF a$ = "F" THEN
+nospin = nospin - .25
+REM highdeg = highdeg + .25
+END IF
+IF a$ = "z" THEN
+vaclow(rev&) = vaclow(rev&) + adjustlow#
+vaclow(rev& + 1) = vaclow(rev& + 1) + adjustlow#
+vaclow(rev& + 2) = vaclow(rev& + 2) + adjustlow#
+vaclow(rev& + 3) = vaclow(rev& + 3) + adjustlow#
+vaclow(rev& + 4) = vaclow(rev& + 4) + adjustlow#
+vaclow(rev& + 5) = vaclow(rev& + 5) + adjustlow#
+vaclow(rev& - 1) = vaclow(rev& - 1) + adjustlow#
+vaclow(rev& - 2) = vaclow(rev& - 2) + adjustlow#
+vaclow(rev& - 3) = vaclow(rev& - 3) + adjustlow#
+vaclow(rev& - 4) = vaclow(rev& - 4) + adjustlow#
+vac = vaclow(rev&)
+END IF
+IF a$ = "Z" THEN
+vaclow(rev&) = vaclow(rev&) + adjustlow#
+vaclow(rev& + 1) = vaclow(rev& + 1) + adjustlow#
+vaclow(rev& + 2) = vaclow(rev& + 2) + adjustlow#
+vaclow(rev& + 3) = vaclow(rev& + 3) + adjustlow#
+vaclow(rev& + 4) = vaclow(rev& + 4) + adjustlow#
+vaclow(rev& + 5) = vaclow(rev& + 5) + adjustlow#
+vaclow(rev& - 1) = vaclow(rev& - 1) + adjustlow#
+vaclow(rev& - 2) = vaclow(rev& - 2) + adjustlow#
+vaclow(rev& - 3) = vaclow(rev& - 3) + adjustlow#
+vaclow(rev& - 4) = vaclow(rev& - 4) + adjustlow#
+vac = vaclow(rev&)
+END IF
+IF a$ = "x" THEN
+vaclow(rev&) = vaclow(rev&) - adjustlow#
+vaclow(rev& + 1) = vaclow(rev& + 1) - adjustlow#
+vaclow(rev& + 2) = vaclow(rev& + 2) - adjustlow#
+vaclow(rev& + 3) = vaclow(rev& + 3) - adjustlow#
+vaclow(rev& + 4) = vaclow(rev& + 4) - adjustlow#
+vaclow(rev& + 5) = vaclow(rev& + 5) - adjustlow#
+vaclow(rev& - 1) = vaclow(rev& - 1) - adjustlow#
+vaclow(rev& - 2) = vaclow(rev& - 2) - adjustlow#
+vaclow(rev& - 3) = vaclow(rev& - 3) - adjustlow#
+vaclow(rev& - 4) = vaclow(rev& - 4) - adjustlow#
+vac = vaclow(rev&)
+END IF
+IF a$ = "X" THEN
+vaclow(rev&) = vaclow(rev&) - adjustlow#
+vaclow(rev& + 1) = vaclow(rev& + 1) - adjustlow#
+vaclow(rev& + 2) = vaclow(rev& + 2) - adjustlow#
+vaclow(rev& + 3) = vaclow(rev& + 3) - adjustlow#
+vaclow(rev& + 4) = vaclow(rev& + 4) - adjustlow#
+vaclow(rev& + 5) = vaclow(rev& + 5) - adjustlow#
+vaclow(rev& - 1) = vaclow(rev& - 1) - adjustlow#
+vaclow(rev& - 2) = vaclow(rev& - 2) - adjustlow#
+vaclow(rev& - 3) = vaclow(rev& - 3) - adjustlow#
+vaclow(rev& - 4) = vaclow(rev& - 4) - adjustlow#
+vac = vaclow(rev&)
+END IF
+IF a$ = "c" THEN revlimit = revlimit - 100
+IF a$ = "C" THEN revlimit = revlimit - 100
+IF a$ = "v" THEN revlimit = revlimit + 100
+IF a$ = "V" THEN revlimit = revlimit + 100
+IF a$ = "b" THEN revlimit = revlimit - 1000
+IF a$ = "B" THEN revlimit = revlimit - 1000
+IF a$ = "n" THEN revlimit = revlimit + 1000
+IF a$ = "N" THEN revlimit = revlimit + 1000
+RETURN
+GOTO trigger
+	    
+logging:
+t# = t# + 1000
+g = 0
+DO
+g = g + 1
+WRITE #3, x1(g), x2(g)
+LOOP UNTIL g = 50
+g = 0
+
+RETURN
+
+
+calibrate:
+	 a% = 1
+	 DO UNTIL a% = 5001
+	 mecadv(a%) = timinglight
+	 vaclow(a%) = 0
+	vachigh(a%) = 0
+	    nos(a%) = 0
+	 a% = a% + 1
+	 LOOP
+	 RETURN
+cpucal:
+	a% = 1
+	 DO UNTIL a% = 5001
+	 mecadv(a%) = 0
+	 vaclow(a%) = 0
+	vachigh(a%) = 0
+	    nos(a%) = 0
+	 a% = a% + 1
+	 LOOP
+	 RETURN
+
+initdata:
+  OPEN "c:\qb\rpmdata.csv" FOR OUTPUT AS #1 LEN = 5009
+  OPEN "c:\qb\calc.dat" FOR OUTPUT AS #2 LEN = 52
+  DO UNTIL a% = 5001
+  WRITE #1, 0, 0, 0, 0, 0
+  a% = a% + 1
+  LOOP
+  a% = 1
+  WRITE #2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  CLOSE #1
+  CLOSE #2
+  RETURN
+savedata:
+  OPEN "c:\qb\rpmdata.csv" FOR OUTPUT AS #1 LEN = 5009
+  OPEN "c:\qb\calc.dat" FOR OUTPUT AS #2 LEN = 52
+  a% = 1
+  DO UNTIL a% = 5001
+  WRITE #1, a% * 2, mecadv(a%), vaclow(a%), vachigh(a%), nos(a%)
+  a% = a% + 1
+  LOOP
+  WRITE #2, lowrpm, highrpm, highdeg, nospin, 0, 0, 0, 0, 0, 0, 0
+  CLOSE #1
+  CLOSE #2
+  RETURN
+
+exportdata:
+  OPEN "A:\rpmdatx.csv" FOR OUTPUT AS #1 LEN = 5009
+  OPEN "A:\calc.csv" FOR OUTPUT AS #2 LEN = 52
+  a% = 1
+  DO UNTIL a% = 5001
+  WRITE #1, a% * 2, mecadv(a%), vaclow(a%), vachigh(a%), nos(a%)
+
+  a% = a% + 1
+  LOOP
+  WRITE #2, lowrpm, highrpm, highdeg, nospin, 0, 0, 0, 0, 0, 0, 0
+  CLOSE #1
+  CLOSE #2
+  RETURN
+
+loaddata:
+RETURN
+  CLS
+  OPEN "c:\qb\rpmdata.csv" FOR INPUT AS #1
+  OPEN "c:\qb\calc.dat" FOR INPUT AS #2
+  a% = 1
+  DO UNTIL a% = 5001
+  INPUT #1, xc$
+  INPUT #1, mecadv(a%)
+  INPUT #1, vaclow(a%)
+  INPUT #1, vachigh(a%)
+  INPUT #1, nos(a%)
+  a% = a% + 1
+  LOOP
+  INPUT #2, lowrpm
+  INPUT #2, highrpm
+  INPUT #2, highdeg
+  INPUT #2, nospin
+  CLOSE #1
+  CLOSE #2
+  RETURN
+importdata:
+  OPEN "a:\rpmdatx.csv" FOR INPUT AS #1
+  OPEN "c:\qb\rpmdata.csv" FOR OUTPUT AS #2 LEN = 5009
+  a% = 1
+  DO UNTIL a% = 5001
+  INPUT #1, a$
+  INPUT #1, mecadv(a%)
+  INPUT #1, vaclow(a%)
+  INPUT #1, vachigh(a%)
+  INPUT #1, nos(a%)
+  WRITE #2, a% * 2, mecadv(a%), vaclow(a%), vachigh(a%), nos(a%)
+ 
+  a% = a% + 1
+  LOOP
+  CLOSE #1
+  CLOSE #2
+  OPEN "a:\calc.csv" FOR INPUT AS #1
+  OPEN "c:\qb\calc.dat" FOR OUTPUT AS #2 LEN = 52
+  INPUT #1, lowrpm
+  INPUT #1, highrpm
+  INPUT #1, highdeg
+  INPUT #1, nospin
+  WRITE #2, lowrpm, highrpm, highdeg, nospin, 0, 0, 0, 0
+  CLOSE #1
+  CLOSE #2
+ 
+ 
+  RETURN
+
+
+gettiming:
+
+	 a% = 1
+	 DO UNTIL a% = 5001
+	 mecadv(a%) = maxadv#
+	 vaclow(a%) = 0
+	vachigh(a%) = 0
+	    nos(a%) = 0
+	 a% = a% + 1
+	 LOOP
+	 RETURN
+
+slopecalc:
+t# = t# + 2270
+lowrpmcal = INT(lowrpm / 2)
+highrpmcal = INT(highrpm / 2)
+degchange = highdeg
+rpmchange = (highrpmcal - lowrpmcal)
+IF degchange = 0 OR rpmchange = 0 THEN
+incdeg = .001
+GOTO subcalc
+END IF
+incdeg = degchange / rpmchange
+subcalc:
+b = 0: d = 0
+DO
+d = d + 1
+IF d = lowrpmcal THEN mecadv(d) = nospin
+IF d < lowrpmcal THEN mecadv(d) = nospin
+IF d > lowrpmcal THEN
+b = b + incdeg
+mecadv(d) = b + nospin
+END IF
+IF d > highrpmcal THEN mecadv(d) = highdeg + nospin
+LOOP UNTIL d = 5001
+RETURN
+timedist:
+	a% = 1
+	DO UNTIL a% = 5001
+	mecadv(a%) = 0
+	vaclow(a%) = 0
+	vachigh(a%) = 0
+	nos(a%) = 0
+	a% = a% + 1
+	LOOP
+	RETURN
+GOTO trigger
+
